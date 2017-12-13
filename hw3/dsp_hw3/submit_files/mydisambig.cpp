@@ -8,6 +8,11 @@
 using namespace std;
 
 typedef map<string, vector<string> > MAP;
+typedef struct{
+	int idx;
+	string str;
+	double prob;
+}DPNode;
 
 inline vector<string> sentence_preprocess(char buf[]){
 	vector<string> chars;
@@ -44,7 +49,6 @@ inline double ngramProb(Vocab& voc, Ngram& lm, const char *a, const char *b){
 	VocabIndex context[] = {wid1, Vocab_None};
 	return lm.wordProb(wid2, context);
 }
-
 inline double ngramProb(Vocab& voc, Ngram& lm, const char *a, const char *b, const char *c){
 	VocabIndex wid1 = voc.getIndex(a);
 	VocabIndex wid2 = voc.getIndex(b);
@@ -60,46 +64,35 @@ inline double ngramProb(Vocab& voc, Ngram& lm, const char *a, const char *b, con
 }
 
 vector<string> viterbi(const vector<string>& chars, Vocab& voc, Ngram& lm, MAP& Map){
-	vector<vector<string> > chartab;
-	vector<vector<int> > idxtab;
-	vector<double> lastprobs, probs;
-	vector<string> lastchars;
+	vector<vector<DPNode> > table;
+	vector<DPNode> last;
 
-	lastprobs.push_back(1);
-	lastchars.push_back("<s>");
-	for(auto i = chars.begin() ; i != chars.end() ; i++)
-	{
-		vector<string> currentchars;
-		vector<int> maxidxs;
-		for(auto j = Map[*i].begin() ; j != Map[*i].end() ; j++)
-		{
+	last.push_back((DPNode){0, "<s>", 1.0});
+	table.push_back(last);
+	
+	for(auto i = chars.begin() ; i != chars.end() ; i++){
+		int ii = distance(chars.begin(), i);
+		last.clear();
+		for(auto j = Map[*i].begin() ; j != Map[*i].end() ; j++){
 			double maxprob = -100000.0;
 			int maxidx = 0;
-			for(auto k = lastchars.begin() ; k != lastchars.end() ; k++)
-			{
-				int idx = distance(lastchars.begin(), k);
-				double prob = lastprobs[idx] + ngramProb(voc, lm, k->data(), j->data());
+			for(int k = 0 ; k < table[ii].size() ; k++){
+				double prob = table[ii][k].prob + ngramProb(voc, lm, table[ii][k].str.data(), j->data());
 				if(prob > maxprob){
 					maxprob = prob;
-					maxidx = idx;
+					maxidx = k;
 				}
 			}
-			probs.push_back(maxprob);
-			currentchars.push_back(*j);
-			maxidxs.push_back(maxidx);
+			last.push_back((DPNode){maxidx, *j, maxprob});
 		}
-		lastprobs = probs;
-		lastchars = currentchars;
-		chartab.push_back(currentchars);
-		idxtab.push_back(maxidxs);
-		probs.clear();
+		table.push_back(last);
 	}
 
 	vector<string> output;
-	int idx = idxtab.size()-1, maxidx = idxtab[idx][0];
-	for(--idx ; idx >= 0 ; idx--){
-		output.push_back(chartab[idx][maxidx]);
-		maxidx = idxtab[idx][maxidx];
+	int idx = 0;
+	for(int i = table.size()-1 ; i >= 0 ; i--){
+		output.push_back(table[i][idx].str);
+		idx = table[i][idx].idx;
 	}
 	return output;
 }
@@ -124,9 +117,7 @@ int main(int argc, char* argv[]){
 	while(fgets(buf, sizeof(buf), input) != NULL){
 		vector<string> chars = sentence_preprocess(buf);
 		vector<string> output = viterbi(chars, voc, lm, Map);
-		printf("<s> ");
 		for(int len = output.size()-1 ; len >= 0 ; len--)
-			printf("%s ", output[len].data());
-		printf("</s>\n");
+			printf("%s%c", output[len].data(), " \n"[len==0]);
 	}
 }
